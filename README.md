@@ -1,2 +1,2 @@
 # Db
-A c# database wrapper class 
+一个C#数据库访问包装类
