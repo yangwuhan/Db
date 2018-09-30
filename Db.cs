@@ -175,7 +175,8 @@ namespace Tz
         #region 动作
 
         /** 查询第一条记录
-         */ 
+         *  返回：未找到返回null，找到返回一条记录；
+         */
         public Dictionary<string, object> Find()
         {
             if (string.IsNullOrEmpty(__table_name))
@@ -239,7 +240,8 @@ namespace Tz
         }
 
         /** 查询
-         */ 
+         * 返回：返回List对象，一条记录都没有，也返回List对象
+         */
         public List<Dictionary<string, object>> Select()
         {
             if (string.IsNullOrEmpty(__table_name))
@@ -407,7 +409,8 @@ namespace Tz
             return ret;
         }
 
-        /** 更改记录（必须设置WHERE条件）
+        /** 更新记录（必须设置WHERE条件）
+         *  返回：受影响的行数
          */ 
         public int Update(Dictionary<string, string> data)
         {
@@ -463,6 +466,179 @@ namespace Tz
                 }
             }
             return ret;
+        }
+
+        /** 指定字段值加1
+         *  返回：受影响的行数
+         */ 
+        public int Inc(string field_name)
+        {
+            if (string.IsNullOrEmpty(__table_name))
+                throw new Exception("空表名！");
+            if (__where.Count == 0)
+                throw new Exception("没有设置更新的where条件！");
+            if (string.IsNullOrEmpty(field_name))
+                throw new Exception("无字段！");
+            StringBuilder sb = new StringBuilder();
+            sb.Append("UPDATE [").Append(__table_name).Append("] SET [").Append(field_name).Append("]=[").Append(field_name).Append("]+1");
+            if (__where.Count > 0)
+            {
+                sb.Append(" WHERE ");
+                for (int i = 0; i < __where.Count; ++i)
+                {
+                    if (i != 0)
+                        sb.Append(" AND ");
+                    sb.Append("(").Append(__where[i]).Append(")");
+
+                }
+                sb.Append(" ");
+            }
+            int ret = 0;
+            using (MySqlConnection con = new MySqlConnection(connection_string))
+            {
+                con.Open();
+                try
+                {
+                    using (MySqlCommand cmd = new MySqlCommand())
+                    {
+                        cmd.Connection = con;
+                        _last_sql = sb.ToString();
+                        cmd.CommandText = sb.ToString();
+                        ret = cmd.ExecuteNonQuery();
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    throw new Exception("数据库操作失败（异常：" + ex.Message + "）！");
+                }
+                finally
+                {
+                    con.Close();
+                }
+            }
+            return ret;
+        }
+
+        /** 指定字段值减1
+         *  返回：受影响的行数
+         */ 
+        public int Dec(string field_name)
+        {
+            if (string.IsNullOrEmpty(__table_name))
+                throw new Exception("空表名！");
+            if (__where.Count == 0)
+                throw new Exception("没有设置更新的where条件！");
+            if (string.IsNullOrEmpty(field_name))
+                throw new Exception("无字段！");
+            StringBuilder sb = new StringBuilder();
+            sb.Append("UPDATE [").Append(__table_name).Append("] SET [").Append(field_name).Append("]=[").Append(field_name).Append("]-1");
+            if (__where.Count > 0)
+            {
+                sb.Append(" WHERE ");
+                for (int i = 0; i < __where.Count; ++i)
+                {
+                    if (i != 0)
+                        sb.Append(" AND ");
+                    sb.Append("(").Append(__where[i]).Append(")");
+
+                }
+                sb.Append(" ");
+            }
+            int ret = 0;
+            using (MySqlConnection con = new MySqlConnection(connection_string))
+            {
+                con.Open();
+                try
+                {
+                    using (MySqlCommand cmd = new MySqlCommand())
+                    {
+                        cmd.Connection = con;
+                        _last_sql = sb.ToString();
+                        cmd.CommandText = sb.ToString();
+                        ret = cmd.ExecuteNonQuery();
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    throw new Exception("数据库操作失败（异常：" + ex.Message + "）！");
+                }
+                finally
+                {
+                    con.Close();
+                }
+            }
+            return ret;
+        }
+
+        /** 使用SQL语句查询
+         *  返回：List对象，一条记录都没有，也返回List对象。
+         */ 
+        public static List<Dictionary<string, object>> QuerySelect(string sql)
+        {
+            List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
+            using (MySqlConnection con = new MySqlConnection(connection_string))
+            {
+                con.Open();
+                try
+                {
+                    using (MySqlCommand cmd = new MySqlCommand())
+                    {
+                        cmd.Connection = con;
+                        _last_sql = sql;
+                        cmd.CommandText = sql;
+                        MySqlDataReader sr = cmd.ExecuteReader();
+                        while (sr.Read())
+                        {
+                            Dictionary<string, object> dic = new Dictionary<string, object>();
+                            for (int i = 0; i < sr.FieldCount; ++i)
+                                dic.Add(sr.GetName(i), sr.GetValue(i));
+                            ret.Add(dic);
+                        }
+                        return ret;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception("数据库操作失败（异常：" + ex.Message + "）！SQL：" + sql);
+                }
+                finally
+                {
+                    con.Close();
+                }
+            }
+        }
+        
+        /** 执行事务
+         */
+        public static void ExecuteTransaction(Action<MySqlCommand> action)
+        {
+            if (action == null)
+                return;
+            using (MySqlConnection con = new MySqlConnection(connection_string))
+            {
+                con.Open();
+                MySqlTransaction transaction = con.BeginTransaction();
+                try
+                {
+                    using (MySqlCommand cmd = new MySqlCommand())
+                    {
+                        cmd.Connection = con;
+                        cmd.Transaction = transaction;
+                        cmd.CommandType = System.Data.CommandType.Text;
+                        action(cmd);
+                    }
+                    transaction.Commit();//提交事务
+                }
+                catch (System.Exception ex)
+                {
+                    transaction.Rollback();//事务回滚
+                    throw ex;
+                }
+                finally
+                {
+                    con.Close();
+                }
+            }
         }
 
         #endregion
