@@ -288,7 +288,26 @@ namespace Tz
                         {
                             Dictionary<string, object> dic = new Dictionary<string, object>();
                             for (int i = 0; i < sr.FieldCount; ++i)
-                                dic.Add(sr.GetName(i), sr.GetValue(i));
+                            {
+                                string field_name = sr.GetName(i);
+                                if (dic.ContainsKey(field_name))
+                                {
+                                    bool b_fix = false;
+                                    for (int fix = 1; fix <= 100; ++fix)
+                                    {
+                                        string tmp = field_name + fix.ToString();
+                                        if (!dic.ContainsKey(tmp))
+                                        {
+                                            field_name = tmp;
+                                            b_fix = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!b_fix)
+                                        throw new Exception("相同字段名超过100个");
+                                }
+                                dic.Add(field_name, sr.GetValue(i));
+                            }
                             ret.Add(dic);
                         }
                         return ret;
@@ -303,7 +322,6 @@ namespace Tz
                     con.Close();
                 }
             }
-            return (ret.Count > 0 ? ret : null);
         }
 
         /** 删除记录（必须设置WHERE条件才允许删除）
@@ -591,7 +609,26 @@ namespace Tz
                         {
                             Dictionary<string, object> dic = new Dictionary<string, object>();
                             for (int i = 0; i < sr.FieldCount; ++i)
-                                dic.Add(sr.GetName(i), sr.GetValue(i));
+                            {
+                                string field_name = sr.GetName(i);
+                                if(dic.ContainsKey(field_name))
+                                {
+                                    bool b_fix = false;
+                                    for(int fix = 1; fix <= 100; ++fix)
+                                    {
+                                        string tmp = field_name + fix.ToString();
+                                        if(!dic.ContainsKey(tmp))
+                                        {
+                                            field_name = tmp;
+                                            b_fix = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!b_fix)
+                                        throw new Exception("相同字段名超过100个");
+                                }
+                                dic.Add(field_name, sr.GetValue(i));
+                            }
                             ret.Add(dic);
                         }
                         return ret;
