@@ -65,8 +65,7 @@ namespace Tz
         private string __table_name = ""; //FROM表名
         private List<Dictionary<string, string>> __join; //JOIN条件
         private List<string> __where; //WHERE条件
-        private string __order_field_name; //ORDER字段
-        private string __order_sort_method; //ORDER方法
+        private List<KeyValuePair<string,string>> __order; //ORDER
         private string __fields = "*"; //SELECT字段
 
         /** 构造函数
@@ -78,8 +77,7 @@ namespace Tz
             __table_name = "";
             __join = new List<Dictionary<string, string>>();
             __where = new List<string>();
-            __order_field_name = "";
-            __order_sort_method = "";
+            __order = new List<KeyValuePair<string, string>>();
             __fields = "*";
         }
 
@@ -148,14 +146,16 @@ namespace Tz
             if (string.IsNullOrEmpty(field_name) || string.IsNullOrEmpty(field_name.Trim()))
                 throw new Exception("空字段！");
             field_name = field_name.Trim();
+            if(field_name.IndexOf('`') != -1 || field_name.IndexOf('[') != -1 || 
+                field_name.IndexOf(']') != -1 || field_name.IndexOf('.') != -1)
+                throw new Exception("字段名不能包含特殊字符“`”“[”“]”和“.”！");
             if (string.IsNullOrEmpty(order_method) || string.IsNullOrEmpty(order_method.Trim()))
                 throw new Exception("空排序方式！");
             order_method = order_method.Trim();
             string em = order_method.ToUpper();
             if(em != "ASC" && em != "DESC")
-                throw new Exception("排序方式有误！");
-            __order_field_name = field_name;
-            __order_sort_method = order_method;
+                throw new Exception("排序方式有误，只能为“ASC”或者“DESC”！");
+            __order.Add(new KeyValuePair<string, string>(field_name, order_method));
             return this;
         }
 
@@ -205,8 +205,18 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            if (!string.IsNullOrEmpty(__order_field_name) && !string.IsNullOrEmpty(__order_sort_method))
-                sb.Append(" ORDER BY `").Append(__order_field_name).Append("` ").Append(__order_sort_method);
+            if (__order.Count > 0)
+            {
+                sb.Append(" ORDER BY ");
+                for (int i = 0; i < __order.Count; ++i)
+                {
+                    var kv = __order[i];
+                    if (i != 0)
+                        sb.Append(" , ");
+                    sb.Append(" `"+ kv.Key + "` " + kv.Value + " ");
+                }
+                sb.Append(" ");
+            }
             sb.Append(" LIMIT 0,1 ");
             Dictionary<string, object> ret = new Dictionary<string, object>();
             using (MySqlConnection con = new MySqlConnection(connection_string))
@@ -289,8 +299,18 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            if (!string.IsNullOrEmpty(__order_field_name) && !string.IsNullOrEmpty(__order_sort_method))
-                sb.Append(" ORDER BY `").Append(__order_field_name).Append("` ").Append(__order_sort_method);
+            if (__order.Count > 0)
+            {
+                sb.Append(" ORDER BY ");
+                for (int i = 0; i < __order.Count; ++i)
+                {
+                    var kv = __order[i];
+                    if (i != 0)
+                        sb.Append(" , ");
+                    sb.Append(" `" + kv.Key + "` " + kv.Value + " ");
+                }
+                sb.Append(" ");
+            }
             List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
             using (MySqlConnection con = new MySqlConnection(connection_string))
             {
