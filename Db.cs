@@ -223,7 +223,26 @@ namespace Tz
                         if (sr.Read())
                         {
                             for (int i = 0; i < sr.FieldCount; ++i)
-                                ret.Add(sr.GetName(i), sr.GetValue(i));
+                            {
+                                string field_name = sr.GetName(i);
+                                if (ret.ContainsKey(field_name))
+                                {
+                                    bool b_fix = false;
+                                    for (int fix = 1; fix <= 100; ++fix)
+                                    {
+                                        string tmp = field_name + fix.ToString();
+                                        if (!ret.ContainsKey(tmp))
+                                        {
+                                            field_name = tmp;
+                                            b_fix = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!b_fix)
+                                        throw new Exception("相同字段名超过100个");
+                                }
+                                ret.Add(field_name, sr.GetValue(i));
+                            }
                         }
                     }
                 }
@@ -373,8 +392,8 @@ namespace Tz
             return ret;
         }
 
-        /** 添加记录
-         *  返回：受影响的行数
+        /** 添加记录【要求数据表必须有自增的id字段】
+         *  返回：插入的ID
          */ 
         public int Add(Dictionary<string, string> data)
         {
@@ -412,7 +431,8 @@ namespace Tz
                         cmd.Connection = con;
                         cmd.CommandText = sb.ToString();
                         _last_sql = sb.ToString();
-                        ret = cmd.ExecuteNonQuery();
+                        cmd.ExecuteNonQuery();
+                        ret = (int)cmd.LastInsertedId;
                     }
                 }
                 catch (System.Exception ex)
