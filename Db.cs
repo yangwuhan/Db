@@ -67,6 +67,8 @@ namespace Tz
         private List<string> __where; //WHERE条件
         private List<KeyValuePair<string,string>> __order; //ORDER
         private string __fields = "*"; //SELECT字段
+        private int __limit_offset = 0;//LIMIT字段，__limit_count为0代表未设置
+        private int __limit_count = 0;//LIMIT字段，0代表未设置
 
         /** 构造函数
          */ 
@@ -159,8 +161,20 @@ namespace Tz
             return this;
         }
 
+        /** LIMIT 子句
+         * offset >= 0，count >0
+         */
+        public Db Limit(int offset, int count)
+        {
+            if (offset < 0 || count <= 0)
+                throw new Exception("参数错误！");
+            __limit_offset = offset;
+            __limit_count = count;
+            return this;
+        }
+
         /** SELECT 哪些字段
-         */ 
+         */
         public Db Field(string fields)
         {
             if (string.IsNullOrEmpty(fields) || string.IsNullOrEmpty(fields.Trim()))
@@ -310,6 +324,10 @@ namespace Tz
                     sb.Append(" `" + kv.Key + "` " + kv.Value + " ");
                 }
                 sb.Append(" ");
+            }
+            if(__limit_count > 0)
+            {
+                sb.Append(" LIMIT ").Append(__limit_offset).Append(",").Append(__limit_count).Append(" ");
             }
             List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
             using (MySqlConnection con = new MySqlConnection(connection_string))
