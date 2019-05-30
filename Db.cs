@@ -646,9 +646,65 @@ namespace Tz
             return ret;
         }
 
+        /** 统计满足查询条件的行数
+         *  返回：行数
+         */
+        public int Count()
+        {
+            if (string.IsNullOrEmpty(__table_name))
+                throw new Exception("空表名！");
+            if (string.IsNullOrEmpty(__fields))
+                __fields = "*";
+            StringBuilder sb = new StringBuilder();
+            sb.Append("SELECT COUNT( ").Append(__fields).Append(" ) AS cnt FROM `").Append(__table_name).Append("`");
+            if (__join.Count > 0)
+            {
+                __join.ForEach((Dictionary<string, string> dic) =>
+                {
+                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN `").Append(dic["table_name"]).Append("`")
+                        .Append(" ON ").Append(dic["join_condition"]);
+                });
+            }
+            if (__where.Count > 0)
+            {
+                sb.Append(" WHERE ");
+                for (int i = 0; i < __where.Count; ++i)
+                {
+                    if (i != 0)
+                        sb.Append(" AND ");
+                    sb.Append("(").Append(__where[i]).Append(")");
+
+                }
+                sb.Append(" ");
+            }
+            List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
+            using (MySqlConnection con = new MySqlConnection(connection_string))
+            {
+                con.Open();
+                try
+                {
+                    using (MySqlCommand cmd = new MySqlCommand())
+                    {
+                        cmd.Connection = con;
+                        cmd.CommandText = sb.ToString();
+                        _last_sql = sb.ToString();
+                        return (int)cmd.ExecuteScalar();
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    throw new Exception(ex.Message + "（sql:" + _last_sql + "）");
+                }
+                finally
+                {
+                    con.Close();
+                }
+            }
+        }
+
         /** 使用SQL语句查询
          *  返回：List对象，一条记录都没有，也返回List对象。
-         */ 
+         */
         public static List<Dictionary<string, object>> QuerySelect(string sql)
         {
             List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
