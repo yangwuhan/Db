@@ -688,7 +688,11 @@ namespace Tz
                         cmd.Connection = con;
                         cmd.CommandText = sb.ToString();
                         _last_sql = sb.ToString();
-                        return (int)cmd.ExecuteScalar();
+                        object a = cmd.ExecuteScalar();
+                        if (a is DBNull)
+                            return 0;
+                        else
+                            return int.Parse(a.ToString());
                     }
                 }
                 catch (System.Exception ex)
