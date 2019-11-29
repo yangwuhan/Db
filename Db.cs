@@ -455,6 +455,7 @@ namespace Tz
                 if (i != 0)
                     sb.Append(",");
                 string val = data[keys[i]];
+                val = _ValidValue(val);
                 sb.Append("'").Append(val).Append("'");
             }
             sb.Append(")");
@@ -504,7 +505,7 @@ namespace Tz
                 if (i != 0)
                     sb.Append(",");
                 string key = keys[i];
-                sb.Append("`").Append(key).Append("`='").Append(data[key]).Append("'");
+                sb.Append("`").Append(key).Append("`='").Append(_ValidValue(data[key])).Append("'");
             }
             if (__where.Count > 0)
             {
@@ -797,5 +798,22 @@ namespace Tz
         }
 
         #endregion
+
+        /** 转义字符处理
+         */ 
+        protected static string _ValidValue(string v)
+        {
+            if (string.IsNullOrEmpty(v))
+                return v;
+            StringBuilder sb = new StringBuilder();
+            for(int i = 0; i < v.Length; ++i)
+            {
+                char c = v[i];
+                sb.Append(c);
+                if (c == '\\')
+                    sb.Append(@"\");
+            }
+            return sb.ToString();
+        }
     }
 }
