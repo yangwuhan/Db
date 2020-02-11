@@ -2,13 +2,36 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-
+using System.Data.Common;
+using System.Data.SQLite;
 using MySql.Data.MySqlClient;
 
 namespace Tz
 {
     public class Db
     {
+        /** 数据库类型
+         */
+        public static EDbType Type 
+        { 
+            get 
+            { 
+                return _type; 
+            } 
+            set 
+            { 
+                _type = value; 
+                switch(_type)
+                {
+                    case EDbType.MYSQL:
+                    case EDbType.SQLITE:
+                        _table_and_field_name_bracket[0] = _table_and_field_name_bracket[1] = "`";
+                        break;
+                }
+            } 
+        }
+        protected static EDbType _type = EDbType.MYSQL;
+       
         /** 连接字符串
          */ 
         public static string connection_string
@@ -37,6 +60,10 @@ namespace Tz
             }
         }
         protected static string _table_prefix = "";
+
+        /** 字段名括号
+         */
+        protected static string[] _table_and_field_name_bracket = new string[2] { "`", "`" };
 
         /** DATETIME字段格式化字符串
          */
@@ -193,17 +220,21 @@ namespace Tz
          */
         public Dictionary<string, object> Find()
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (string.IsNullOrEmpty(__fields))
                 __fields = "*";
             StringBuilder sb = new StringBuilder();
-            sb.Append("SELECT ").Append(__fields).Append(" FROM `").Append(__table_name).Append("`");
+            sb.Append("SELECT ").Append(__fields).Append(" FROM ");
+            sb.Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
             if (__join.Count > 0)
             {
                 __join.ForEach((Dictionary<string, string> dic) =>
                 {
-                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN `").Append(dic["table_name"]).Append("`")
+                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN ")
+                        .Append(_table_and_field_name_bracket[0]).Append(dic["table_name"]).Append(_table_and_field_name_bracket[1])
                         .Append(" ON ").Append(dic["join_condition"]);
                 });
             }
@@ -227,25 +258,44 @@ namespace Tz
                     var kv = __order[i];
                     if (i != 0)
                         sb.Append(" , ");
-                    sb.Append(" `"+ kv.Key + "` " + kv.Value + " ");
+                    sb.Append(" " + _table_and_field_name_bracket[0] + kv.Key + _table_and_field_name_bracket[1] + " " + kv.Value + " ");
                 }
                 sb.Append(" ");
             }
             sb.Append(" LIMIT 0,1 ");
-            Dictionary<string, object> ret = new Dictionary<string, object>();
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Find<MySqlConnection, MySqlCommand, MySqlDataReader>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Find<SQLiteConnection, SQLiteCommand, SQLiteDataReader>(sb.ToString());
+                default:
+                    return null;
+            }
+        }
+        protected Dictionary<string, object> _Find<TConnection, TCommand, TDataReader>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+            where TDataReader : DbDataReader, IDisposable
+        {
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sb.ToString();
-                        _last_sql = sb.ToString();
-                        MySqlDataReader sr = cmd.ExecuteReader();
+                        cmd.CommandText = sql;
+                        _last_sql = sql;
+                        TDataReader sr = cmd.ExecuteReader() as TDataReader;
                         if (sr.Read())
                         {
+                            var ret = new Dictionary<string, object>();
                             for (int i = 0; i < sr.FieldCount; ++i)
                             {
                                 string field_name = sr.GetName(i);
@@ -267,7 +317,10 @@ namespace Tz
                                 }
                                 ret.Add(field_name, sr.GetValue(i));
                             }
+                            return ret;
                         }
+                        else
+                            return null;
                     }
                 }
                 catch (System.Exception ex)
@@ -278,8 +331,7 @@ namespace Tz
                 {
                     con.Close();
                 }
-            }
-            return (ret.Count > 0 ? ret : null);
+            }                
         }
 
         /** 查询
@@ -287,17 +339,21 @@ namespace Tz
          */
         public List<Dictionary<string, object>> Select()
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (string.IsNullOrEmpty(__fields))
                 __fields = "*";
             StringBuilder sb = new StringBuilder();
-            sb.Append("SELECT ").Append(__fields).Append(" FROM `").Append(__table_name).Append("`");
+            sb.Append("SELECT ").Append(__fields).Append(" FROM ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
             if (__join.Count > 0)
             {
                 __join.ForEach((Dictionary<string, string> dic) =>
                 {
-                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN `").Append(dic["table_name"]).Append("`")
+                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN ")
+                        .Append(_table_and_field_name_bracket[0]).Append(dic["table_name"]).Append(_table_and_field_name_bracket[1])
                         .Append(" ON ").Append(dic["join_condition"]);
                 });
             }
@@ -321,7 +377,7 @@ namespace Tz
                     var kv = __order[i];
                     if (i != 0)
                         sb.Append(" , ");
-                    sb.Append(" `" + kv.Key + "` " + kv.Value + " ");
+                    sb.Append(" " + _table_and_field_name_bracket[0] + kv.Key + _table_and_field_name_bracket[1] + " " + kv.Value + " ");
                 }
                 sb.Append(" ");
             }
@@ -329,18 +385,37 @@ namespace Tz
             {
                 sb.Append(" LIMIT ").Append(__limit_offset).Append(",").Append(__limit_count).Append(" ");
             }
-            List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch(_type)
             {
+                case EDbType.MYSQL:
+                    return _Select<MySqlConnection, MySqlCommand, MySqlDataReader>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Select<SQLiteConnection, SQLiteCommand, SQLiteDataReader>(sb.ToString());
+                default:
+                    return new List<Dictionary<string, object>>();
+            }
+        }
+        protected List<Dictionary<string, object>> _Select<TConnection, TCommand, TDataReader>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+            where TDataReader : DbDataReader, IDisposable
+        {
+            List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sb.ToString();
-                        _last_sql = sb.ToString();
-                        MySqlDataReader sr = cmd.ExecuteReader();
+                        cmd.CommandText = sql;
+                        _last_sql = sql;
+                        TDataReader sr = cmd.ExecuteReader() as TDataReader;
                         while (sr.Read())
                         {
                             Dictionary<string, object> dic = new Dictionary<string, object>();
@@ -383,15 +458,18 @@ namespace Tz
 
         /** 删除记录（必须设置WHERE条件才允许删除）
          *  返回：受影响的行数
-         */ 
+         */
         public int Delete()
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (__where.Count == 0)
                 throw new Exception("没有设置WHERE条件！");
             StringBuilder sb = new StringBuilder();
-            sb.Append("DELETE FROM `").Append(__table_name).Append("`");
+            sb.Append("DELETE FROM ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
             if (__where.Count > 0)
             {
                 sb.Append(" WHERE ");
@@ -404,18 +482,35 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            int ret = 0;
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Delete<MySqlConnection, MySqlCommand>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Delete<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                default:
+                    return 0;
+            }
+        }
+        protected int _Delete<TConnection, TCommand>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+        {
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sb.ToString();
-                        _last_sql = sb.ToString();
-                        ret = cmd.ExecuteNonQuery();
+                        cmd.CommandText = sql;
+                        _last_sql = sql;
+                        return cmd.ExecuteNonQuery();
                     }
                 }
                 catch (System.Exception ex)
@@ -427,27 +522,30 @@ namespace Tz
                     con.Close();
                 }
             }
-            return ret;
         }
 
-        /** 添加记录【要求数据表必须有自增的id字段】
-         *  返回：插入的ID
-         */ 
+        /** 添加记录
+         *  返回：受影响的行数，MYSQL返回的是插入的ID?【要求数据表必须有自增的id字段】 
+         */
         public int Add(Dictionary<string, string> data)
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (data.Count == 0)
                 throw new Exception("无字段！");
             StringBuilder sb = new StringBuilder();
-            sb.Append("INSERT INTO `").Append(__table_name).Append("`(");
+            sb.Append("INSERT INTO ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1])
+                .Append("(");
             List<string> keys = new List<string>(data.Keys);
             for (int i = 0; i < keys.Count; ++i)
             {
                 if (i != 0)
                     sb.Append(",");
                 string key = keys[i];
-                sb.Append("`").Append(key).Append("`");
+                sb.Append(_table_and_field_name_bracket[0]).Append(key).Append(_table_and_field_name_bracket[1]);
             }
             sb.Append(") VALUES(");
             for (int i = 0; i < keys.Count; ++i)
@@ -455,23 +553,51 @@ namespace Tz
                 if (i != 0)
                     sb.Append(",");
                 string val = data[keys[i]];
-                val = _ValidValue(val);
-                sb.Append("'").Append(val).Append("'");
+                if(val == null)
+                {
+                    sb.Append("null");
+                }
+                else
+                {
+                    val = _ValidValue(val);
+                    sb.Append("'").Append(val).Append("'");
+                }
             }
             sb.Append(")");
-            int ret = 0;
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Add<MySqlConnection, MySqlCommand>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Add<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                default:
+                    return 0;
+            }
+        }
+        protected int _Add<TConnection, TCommand>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+        {
+            int ret = 0;
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sb.ToString();
-                        _last_sql = sb.ToString();
-                        cmd.ExecuteNonQuery();
-                        ret = (int)cmd.LastInsertedId;
+                        cmd.CommandText = sql;
+                        _last_sql = sql;
+                        ret = cmd.ExecuteNonQuery();
+
+                        //MYSQL返回的是插入的ID?【要求数据表必须有自增的id字段】 
+                        if (_type == EDbType.MYSQL)
+                            ret = (int)(cmd as MySqlCommand).LastInsertedId;
                     }
                 }
                 catch (System.Exception ex)
@@ -488,9 +614,11 @@ namespace Tz
 
         /** 更新记录（必须设置WHERE条件）
          *  返回：受影响的行数
-         */ 
+         */
         public int Update(Dictionary<string, string> data)
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (__where.Count == 0)
@@ -498,14 +626,27 @@ namespace Tz
             if (data.Count == 0)
                 throw new Exception("无字段！");
             StringBuilder sb = new StringBuilder();
-            sb.Append("UPDATE `").Append(__table_name).Append("` SET ");
+            sb.Append("UPDATE ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1])
+                .Append(" SET ");
             List<string> keys = new List<string>(data.Keys);
             for (int i = 0; i < keys.Count; ++i)
             {
                 if (i != 0)
                     sb.Append(",");
                 string key = keys[i];
-                sb.Append("`").Append(key).Append("`='").Append(_ValidValue(data[key])).Append("'");
+                sb.Append(_table_and_field_name_bracket[0]).Append(key).Append(_table_and_field_name_bracket[1])
+                    .Append("=");
+                if(data[key] == null)
+                {
+                    sb.Append("null");
+                }
+                else
+                {
+                    sb.Append("'")
+                        .Append(_ValidValue(data[key]))
+                        .Append("'");
+                }
             }
             if (__where.Count > 0)
             {
@@ -519,21 +660,39 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            int ret = 0;
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Update<MySqlConnection, MySqlCommand>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Update<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                default:
+                    return 0;
+            }
+        }
+        protected int _Update<TConnection, TCommand>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+        {
+            int ret = 0;
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sb.ToString();
-                        _last_sql = sb.ToString();
+                        cmd.CommandText = sql;
+                        _last_sql = sql;
                         ret = cmd.ExecuteNonQuery();
                     }
                 }
-                catch(System.Exception ex)
+                catch (System.Exception ex)
                 {
                     throw new Exception(ex.Message + "（sql:" + _last_sql + "）");
                 }
@@ -547,9 +706,11 @@ namespace Tz
 
         /** 指定字段值加1
          *  返回：受影响的行数
-         */ 
+         */
         public int Inc(string field_name)
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (__where.Count == 0)
@@ -557,7 +718,13 @@ namespace Tz
             if (string.IsNullOrEmpty(field_name))
                 throw new Exception("无字段！");
             StringBuilder sb = new StringBuilder();
-            sb.Append("UPDATE [").Append(__table_name).Append("] SET [").Append(field_name).Append("]=[").Append(field_name).Append("]+1");
+            sb.Append("UPDATE ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1])
+                .Append(" SET ")
+                .Append(_table_and_field_name_bracket[0]).Append(field_name).Append(_table_and_field_name_bracket[1])
+                .Append("=")
+                .Append(_table_and_field_name_bracket[0]).Append(field_name).Append(_table_and_field_name_bracket[1])
+                .Append("+1");
             if (__where.Count > 0)
             {
                 sb.Append(" WHERE ");
@@ -570,17 +737,35 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            int ret = 0;
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Inc<MySqlConnection, MySqlCommand>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Inc<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                default:
+                    return 0;
+            }
+        }
+        protected int _Inc<TConnection, TCommand>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+        {
+            int ret = 0;
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        _last_sql = sb.ToString();
-                        cmd.CommandText = sb.ToString();
+                        _last_sql = sql;
+                        cmd.CommandText = sql;
                         ret = cmd.ExecuteNonQuery();
                     }
                 }
@@ -598,9 +783,11 @@ namespace Tz
 
         /** 指定字段值减1
          *  返回：受影响的行数
-         */ 
+         */
         public int Dec(string field_name)
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (__where.Count == 0)
@@ -608,7 +795,13 @@ namespace Tz
             if (string.IsNullOrEmpty(field_name))
                 throw new Exception("无字段！");
             StringBuilder sb = new StringBuilder();
-            sb.Append("UPDATE [").Append(__table_name).Append("] SET [").Append(field_name).Append("]=[").Append(field_name).Append("]-1");
+            sb.Append("UPDATE ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1])
+                .Append(" SET ")
+                .Append(_table_and_field_name_bracket[0]).Append(field_name).Append(_table_and_field_name_bracket[1])
+                .Append("=")
+                .Append(_table_and_field_name_bracket[0]).Append(field_name).Append(_table_and_field_name_bracket[1])
+                .Append("-1");
             if (__where.Count > 0)
             {
                 sb.Append(" WHERE ");
@@ -621,17 +814,35 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            int ret = 0;
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Dec<MySqlConnection, MySqlCommand>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Dec<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                default:
+                    return 0;
+            }
+        }
+        protected int _Dec<TConnection, TCommand>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+        {
+            int ret = 0;
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        _last_sql = sb.ToString();
-                        cmd.CommandText = sb.ToString();
+                        _last_sql = sql;
+                        cmd.CommandText = sql;
                         ret = cmd.ExecuteNonQuery();
                     }
                 }
@@ -652,17 +863,21 @@ namespace Tz
          */
         public int Count()
         {
+            #region 构造SQL语句
+
             if (string.IsNullOrEmpty(__table_name))
                 throw new Exception("空表名！");
             if (string.IsNullOrEmpty(__fields))
                 __fields = "*";
             StringBuilder sb = new StringBuilder();
-            sb.Append("SELECT COUNT( ").Append(__fields).Append(" ) AS cnt FROM `").Append(__table_name).Append("`");
+            sb.Append("SELECT COUNT( ").Append(__fields).Append(" ) AS cnt FROM ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
             if (__join.Count > 0)
             {
                 __join.ForEach((Dictionary<string, string> dic) =>
                 {
-                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN `").Append(dic["table_name"]).Append("`")
+                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN ")
+                        .Append(_table_and_field_name_bracket[0]).Append(dic["table_name"]).Append(_table_and_field_name_bracket[1])
                         .Append(" ON ").Append(dic["join_condition"]);
                 });
             }
@@ -678,17 +893,34 @@ namespace Tz
                 }
                 sb.Append(" ");
             }
-            List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+
+            #endregion
+
+            switch (_type)
             {
+                case EDbType.MYSQL:
+                    return _Count<MySqlConnection, MySqlCommand>(sb.ToString());
+                case EDbType.SQLITE:
+                    return _Count<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                default:
+                    return 0;
+            }
+        }
+        protected int _Count<TConnection, TCommand>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+        {
+            using (TConnection con = new TConnection())
+            {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sb.ToString();
-                        _last_sql = sb.ToString();
+                        cmd.CommandText = sql;
+                        _last_sql = sql;
                         object a = cmd.ExecuteScalar();
                         if (a is DBNull)
                             return 0;
@@ -710,33 +942,49 @@ namespace Tz
         /** 使用SQL语句查询
          *  返回：List对象，一条记录都没有，也返回List对象。
          */
-        public static List<Dictionary<string, object>> QuerySelect(string sql)
+        public static List<Dictionary<string, object>> QuerySelect(string sql)            
+        {
+            switch (_type)
+            {
+                case EDbType.MYSQL:
+                    return _QuerySelect<MySqlConnection, MySqlCommand, MySqlDataReader>(sql);
+                case EDbType.SQLITE:
+                    return _QuerySelect<SQLiteConnection, SQLiteCommand, SQLiteDataReader>(sql);
+                default:
+                    return new List<Dictionary<string, object>>();
+            }
+        }
+        protected static List<Dictionary<string, object>> _QuerySelect<TConnection, TCommand, TDataReader>(string sql)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+            where TDataReader : DbDataReader, IDisposable
         {
             List<Dictionary<string, object>> ret = new List<Dictionary<string, object>>();
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+            using (TConnection con = new TConnection())
             {
+                con.ConnectionString = connection_string;
                 con.Open();
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
                         _last_sql = sql;
                         cmd.CommandText = sql;
-                        MySqlDataReader sr = cmd.ExecuteReader();
+                        TDataReader sr = cmd.ExecuteReader() as TDataReader;
                         while (sr.Read())
                         {
                             Dictionary<string, object> dic = new Dictionary<string, object>();
                             for (int i = 0; i < sr.FieldCount; ++i)
                             {
                                 string field_name = sr.GetName(i);
-                                if(dic.ContainsKey(field_name))
+                                if (dic.ContainsKey(field_name))
                                 {
                                     bool b_fix = false;
-                                    for(int fix = 1; fix <= 100; ++fix)
+                                    for (int fix = 1; fix <= 100; ++fix)
                                     {
                                         string tmp = field_name + fix.ToString();
-                                        if(!dic.ContainsKey(tmp))
+                                        if (!dic.ContainsKey(tmp))
                                         {
                                             field_name = tmp;
                                             b_fix = true;
@@ -763,20 +1011,36 @@ namespace Tz
                 }
             }
         }
-        
+
         /** 执行事务
          */
-        public static void ExecuteTransaction(Action<MySqlCommand> action)
+        public static void ExecuteTransaction(Action<DbCommand> action)
+        {
+            switch (_type)
+            {
+                case EDbType.MYSQL:
+                    _ExecuteTransaction<MySqlConnection, MySqlCommand, MySqlTransaction>(action);
+                    break;
+                case EDbType.SQLITE:
+                    _ExecuteTransaction<SQLiteConnection, SQLiteCommand, SQLiteTransaction>(action);
+                    break;
+            }
+        }
+        protected static void _ExecuteTransaction<TConnection, TCommand, TTransaction>(Action<DbCommand> action)
+            where TConnection : DbConnection, IDisposable, new()
+            where TCommand : DbCommand, IDisposable, new()
+            where TTransaction : DbTransaction
         {
             if (action == null)
                 return;
-            using (MySqlConnection con = new MySqlConnection(connection_string))
+            using (TConnection con = new TConnection())
             {
+                con.ConnectionString = connection_string;
                 con.Open();
-                MySqlTransaction transaction = con.BeginTransaction();
+                TTransaction transaction = con.BeginTransaction() as TTransaction;
                 try
                 {
-                    using (MySqlCommand cmd = new MySqlCommand())
+                    using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
                         cmd.Transaction = transaction;
@@ -800,7 +1064,7 @@ namespace Tz
         #endregion
 
         /** 转义字符处理
-         */ 
+         */
         protected static string _ValidValue(string v)
         {
             if (string.IsNullOrEmpty(v))
@@ -810,8 +1074,18 @@ namespace Tz
             {
                 char c = v[i];
                 sb.Append(c);
-                if (c == '\\')
-                    sb.Append(@"\");
+                if(_type == EDbType.MYSQL)
+                {
+                    if (c == '\\')
+                        sb.Append(@"\");
+                    else if (c == '\'')
+                        sb.Append(@"'");
+                }
+                else
+                {
+                    if (c == '\'')
+                        sb.Append(@"'");
+                }
             }
             return sb.ToString();
         }
