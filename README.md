@@ -4,8 +4,8 @@
 
 （1）查询
 
-    var recs1 = Db.Table("a").Join("b", "b.id=a.b_id", "left").Where("b.count>10").Order("a.id", "asc").Field("a.*").Select();
-    var rec = Db.Table("a").Join("b", "b.id=a.b_id", "left").Where("b.count>10").Order("a.id", "asc").Field("a.*").Find();
+    var recs1 = Db.Table("a").Join("b", "b.id=a.b_id", "left").Where("b.count>10").Order("a", "id", "asc").Field("a.*").Select();
+    var rec = Db.Table("a").Join("b", "b.id=a.b_id", "left").Where("b.count>10").Order("a", "id", "asc").Field("a.*").Find();
     var recs2 = Db.QuerySelect("select a.* from a left join b on b.id=a.b_id where b.count>10 order by a.id asc");
     
 （2）增加
