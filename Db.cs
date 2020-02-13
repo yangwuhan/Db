@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Data.Common;
+using System.Data.SqlClient;
 using System.Data.SQLite;
 using MySql.Data.MySqlClient;
+
 
 namespace Tz
 {
@@ -27,6 +29,11 @@ namespace Tz
                     case EDbType.SQLITE:
                         _table_and_field_name_bracket[0] = _table_and_field_name_bracket[1] = "`";
                         break;
+                    case EDbType.SQLSERVER2005:
+                    case EDbType.SQLSERVER2012:
+                        _table_and_field_name_bracket[0] = "[";
+                        _table_and_field_name_bracket[1] = "]";
+                        break;
                 }
             } 
         }
@@ -44,10 +51,15 @@ namespace Tz
                 _connection_string = value.Trim();
             }
         }
+        //MySQL
         protected static string _connection_string = "Server=127.0.0.1;Database=test; User ID=root;Password=123456;port=3306;CharSet=utf8;pooling=true;";
+        //SQLite
+        //protected static string _connection_string = "Data Source = db.sqlite3";
+        //SQL Server
+        //protected static string _connection_string = "Data Source = 127.0.0.1 ; Initial Catalog = test ; User ID = sa ; Pwd = 123456 ; ";
 
         /** 表前缀
-         */ 
+         */
         public static string table_prefix
         {
             get { return _table_prefix; }
@@ -92,7 +104,7 @@ namespace Tz
         private string __table_name = ""; //FROM表名
         private List<Dictionary<string, string>> __join; //JOIN条件
         private List<string> __where; //WHERE条件
-        private List<KeyValuePair<string,string>> __order; //ORDER
+        private List<KeyValuePair<string,string>> __order; //ORDER，字段名已经添加了表名、字段名括号以及表名前缀
         private string __fields = "*"; //SELECT字段
         private int __limit_offset = 0;//LIMIT字段，__limit_count为0代表未设置
         private int __limit_count = 0;//LIMIT字段，0代表未设置
@@ -169,22 +181,39 @@ namespace Tz
         }
 
         /** ORDER 子句
-         */ 
-        public Db Order(string field_name, string order_method)
+         *  table_name : 字段所在的表名，可以为null或者""
+         *  field_name : 字段名（纯字段名，不能带表名前缀）
+         *  order_method : 排序方式，只能为ASC或者DESC，不区分大小写
+         */
+        public Db Order(string table_name, string field_name, string order_method)
         {
+            string tb_name = null;
+            if (string.IsNullOrEmpty(table_name) || string.IsNullOrEmpty(table_name.Trim()))
+                tb_name = null;
+            else
+                tb_name = table_name.Trim();
+
+            string fd_name = "";
             if (string.IsNullOrEmpty(field_name) || string.IsNullOrEmpty(field_name.Trim()))
                 throw new Exception("空字段！");
-            field_name = field_name.Trim();
-            if(field_name.IndexOf('`') != -1 || field_name.IndexOf('[') != -1 || 
-                field_name.IndexOf(']') != -1 || field_name.IndexOf('.') != -1)
-                throw new Exception("字段名不能包含特殊字符“`”“[”“]”和“.”！");
+            fd_name = field_name.Trim();
+
+            string fd = "";
+            if (string.IsNullOrEmpty(tb_name) || string.IsNullOrEmpty(tb_name.Trim()))
+                fd = _table_and_field_name_bracket[0] + fd_name + _table_and_field_name_bracket[1];
+            else
+                fd = _table_and_field_name_bracket[0] + tb_name + _table_and_field_name_bracket[1] +
+                    "." + _table_and_field_name_bracket[0] + fd_name + _table_and_field_name_bracket[1];
+
             if (string.IsNullOrEmpty(order_method) || string.IsNullOrEmpty(order_method.Trim()))
                 throw new Exception("空排序方式！");
             order_method = order_method.Trim();
             string em = order_method.ToUpper();
             if(em != "ASC" && em != "DESC")
                 throw new Exception("排序方式有误，只能为“ASC”或者“DESC”！");
-            __order.Add(new KeyValuePair<string, string>(field_name, order_method));
+
+            __order.Add(new KeyValuePair<string, string>(fd, em));
+
             return this;
         }
 
@@ -227,7 +256,10 @@ namespace Tz
             if (string.IsNullOrEmpty(__fields))
                 __fields = "*";
             StringBuilder sb = new StringBuilder();
-            sb.Append("SELECT ").Append(__fields).Append(" FROM ");
+            sb.Append("SELECT ");
+            if (_type == EDbType.SQLSERVER2005 || _type == EDbType.SQLSERVER2012)
+                sb.Append(" TOP 1 ");
+            sb.Append(__fields).Append(" FROM ");
             sb.Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
             if (__join.Count > 0)
             {
@@ -258,11 +290,12 @@ namespace Tz
                     var kv = __order[i];
                     if (i != 0)
                         sb.Append(" , ");
-                    sb.Append(" " + _table_and_field_name_bracket[0] + kv.Key + _table_and_field_name_bracket[1] + " " + kv.Value + " ");
+                    sb.Append(" " + kv.Key + " " + kv.Value + " ");
                 }
                 sb.Append(" ");
             }
-            sb.Append(" LIMIT 0,1 ");
+            if(_type != EDbType.SQLSERVER2005 && _type != EDbType.SQLSERVER2012)
+                sb.Append(" LIMIT 0,1 ");
 
             #endregion
 
@@ -272,6 +305,9 @@ namespace Tz
                     return _Find<MySqlConnection, MySqlCommand, MySqlDataReader>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Find<SQLiteConnection, SQLiteCommand, SQLiteDataReader>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Find<SqlConnection, SqlCommand, SqlDataReader>(sb.ToString());
                 default:
                     return null;
             }
@@ -346,46 +382,92 @@ namespace Tz
             if (string.IsNullOrEmpty(__fields))
                 __fields = "*";
             StringBuilder sb = new StringBuilder();
-            sb.Append("SELECT ").Append(__fields).Append(" FROM ")
-                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
-            if (__join.Count > 0)
+            if (_type == EDbType.SQLSERVER2005 && __limit_count > 0)
             {
-                __join.ForEach((Dictionary<string, string> dic) =>
-                {
-                    sb.Append(" ").Append(dic["join_method"]).Append(" JOIN ")
-                        .Append(_table_and_field_name_bracket[0]).Append(dic["table_name"]).Append(_table_and_field_name_bracket[1])
-                        .Append(" ON ").Append(dic["join_condition"]);
-                });
-            }
-            if (__where.Count > 0)
-            {
-                sb.Append(" WHERE ");
-                for (int i = 0; i < __where.Count; ++i)
-                {
-                    if (i != 0)
-                        sb.Append(" AND ");
-                    sb.Append("(").Append(__where[i]).Append(")");
-
-                }
-                sb.Append(" ");
-            }
-            if (__order.Count > 0)
-            {
-                sb.Append(" ORDER BY ");
+                if (__order.Count == 0)
+                    throw new Exception("SQLServer2005和SQLServer2008的分页查询SQL语句必须带有Order子句");
+                StringBuilder sb_pre = new StringBuilder();
+                sb_pre.Append("SELECT ").Append(__fields).Append(",ROW_NUMBER() OVER (");
+                sb_pre.Append(" ORDER BY ");
                 for (int i = 0; i < __order.Count; ++i)
                 {
                     var kv = __order[i];
                     if (i != 0)
-                        sb.Append(" , ");
-                    sb.Append(" " + _table_and_field_name_bracket[0] + kv.Key + _table_and_field_name_bracket[1] + " " + kv.Value + " ");
+                        sb_pre.Append(" , ");
+                    sb_pre.Append(" " + kv.Key + " " + kv.Value + " ");
                 }
-                sb.Append(" ");
-            }
-            if(__limit_count > 0)
-            {
-                sb.Append(" LIMIT ").Append(__limit_offset).Append(",").Append(__limit_count).Append(" ");
-            }
+                sb_pre.Append(" ) AS _RowNum ").Append(" FROM ")
+                   .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
+                if (__join.Count > 0)
+                {
+                    __join.ForEach((Dictionary<string, string> dic) =>
+                    {
+                        sb_pre.Append(" ").Append(dic["join_method"]).Append(" JOIN ")
+                            .Append(_table_and_field_name_bracket[0]).Append(dic["table_name"]).Append(_table_and_field_name_bracket[1])
+                            .Append(" ON ").Append(dic["join_condition"]);
+                    });
+                }
+                if (__where.Count > 0)
+                {
+                    sb_pre.Append(" WHERE ");
+                    for (int i = 0; i < __where.Count; ++i)
+                    {
+                        if (i != 0)
+                            sb_pre.Append(" AND ");
+                        sb_pre.Append("(").Append(__where[i]).Append(")");
 
+                    }
+                    sb_pre.Append(" ");
+                }
+                sb = new StringBuilder();
+                sb.Append("SELECT a.* FROM ( ").Append(sb_pre.ToString()).Append(" ) a WHERE a._RowNum BETWEEN ")
+                    .Append(__limit_offset + 1).Append(" AND ").Append(__limit_offset + __limit_count).Append(" ");
+            }
+            else
+            {
+                sb.Append("SELECT ").Append(__fields).Append(" FROM ")
+                    .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1]);
+                if (__join.Count > 0)
+                {
+                    __join.ForEach((Dictionary<string, string> dic) =>
+                    {
+                        sb.Append(" ").Append(dic["join_method"]).Append(" JOIN ")
+                            .Append(_table_and_field_name_bracket[0]).Append(dic["table_name"]).Append(_table_and_field_name_bracket[1])
+                            .Append(" ON ").Append(dic["join_condition"]);
+                    });
+                }
+                if (__where.Count > 0)
+                {
+                    sb.Append(" WHERE ");
+                    for (int i = 0; i < __where.Count; ++i)
+                    {
+                        if (i != 0)
+                            sb.Append(" AND ");
+                        sb.Append("(").Append(__where[i]).Append(")");
+
+                    }
+                    sb.Append(" ");
+                }
+                if (__order.Count > 0)
+                {
+                    sb.Append(" ORDER BY ");
+                    for (int i = 0; i < __order.Count; ++i)
+                    {
+                        var kv = __order[i];
+                        if (i != 0)
+                            sb.Append(" , ");
+                        sb.Append(" " + kv.Key + " " + kv.Value + " ");
+                    }
+                    sb.Append(" ");
+                }
+                if (__limit_count > 0)
+                {
+                    if (_type == EDbType.MYSQL || _type == EDbType.SQLITE)
+                        sb.Append(" LIMIT ").Append(__limit_offset).Append(",").Append(__limit_count).Append(" ");
+                    else if (_type == EDbType.SQLSERVER2012)
+                        sb.Append(" OFFSET ").Append(__limit_offset).Append(" ROWS FETCH NEXT ").Append(__limit_count).Append(" ROWS ONLY ");
+                }
+            }
             #endregion
 
             switch(_type)
@@ -394,6 +476,9 @@ namespace Tz
                     return _Select<MySqlConnection, MySqlCommand, MySqlDataReader>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Select<SQLiteConnection, SQLiteCommand, SQLiteDataReader>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Select<SqlConnection, SqlCommand, SqlDataReader>(sb.ToString());
                 default:
                     return new List<Dictionary<string, object>>();
             }
@@ -491,6 +576,9 @@ namespace Tz
                     return _Delete<MySqlConnection, MySqlCommand>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Delete<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Delete<SqlConnection, SqlCommand>(sb.ToString());
                 default:
                     return 0;
             }
@@ -573,6 +661,9 @@ namespace Tz
                     return _Add<MySqlConnection, MySqlCommand>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Add<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Add<SqlConnection, SqlCommand>(sb.ToString());
                 default:
                     return 0;
             }
@@ -669,6 +760,9 @@ namespace Tz
                     return _Update<MySqlConnection, MySqlCommand>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Update<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Update<SqlConnection, SqlCommand>(sb.ToString());
                 default:
                     return 0;
             }
@@ -746,6 +840,9 @@ namespace Tz
                     return _Inc<MySqlConnection, MySqlCommand>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Inc<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Inc<SqlConnection, SqlCommand>(sb.ToString());
                 default:
                     return 0;
             }
@@ -823,6 +920,9 @@ namespace Tz
                     return _Dec<MySqlConnection, MySqlCommand>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Dec<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Dec<SqlConnection, SqlCommand>(sb.ToString());
                 default:
                     return 0;
             }
@@ -902,6 +1002,9 @@ namespace Tz
                     return _Count<MySqlConnection, MySqlCommand>(sb.ToString());
                 case EDbType.SQLITE:
                     return _Count<SQLiteConnection, SQLiteCommand>(sb.ToString());
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Count<SqlConnection, SqlCommand>(sb.ToString());
                 default:
                     return 0;
             }
@@ -950,6 +1053,9 @@ namespace Tz
                     return _QuerySelect<MySqlConnection, MySqlCommand, MySqlDataReader>(sql);
                 case EDbType.SQLITE:
                     return _QuerySelect<SQLiteConnection, SQLiteCommand, SQLiteDataReader>(sql);
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _QuerySelect<SqlConnection, SqlCommand, SqlDataReader>(sql);
                 default:
                     return new List<Dictionary<string, object>>();
             }
@@ -1024,6 +1130,10 @@ namespace Tz
                 case EDbType.SQLITE:
                     _ExecuteTransaction<SQLiteConnection, SQLiteCommand, SQLiteTransaction>(action);
                     break;
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    _ExecuteTransaction<SqlConnection, SqlCommand, SqlTransaction>(action);
+                    break;
             }
         }
         protected static void _ExecuteTransaction<TConnection, TCommand, TTransaction>(Action<DbCommand> action)
@@ -1088,6 +1198,13 @@ namespace Tz
                 }
             }
             return sb.ToString();
+        }
+
+        /** 判断字段名是否包含表前缀
+         */ 
+        protected static bool _IsFieldNameContainTableName(String field_name)
+        {
+            return (field_name.IndexOf('.') > 0);
         }
     }
 }
