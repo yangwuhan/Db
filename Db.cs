@@ -682,13 +682,36 @@ namespace Tz
                     using (TCommand cmd = new TCommand())
                     {
                         cmd.Connection = con;
-                        cmd.CommandText = sql;
-                        _last_sql = sql;
-                        ret = cmd.ExecuteNonQuery();
 
-                        //MYSQL返回的是插入的ID?【要求数据表必须有自增的id字段】 
-                        if (_type == EDbType.MYSQL)
+                        if(_type == EDbType.SQLSERVER2005 || _type == EDbType.SQLSERVER2012)
+                        {
+                            string s = @"SET NOCOUNT ON ;";
+                            s += sql + " ;";
+                            s += @"SELECT ThisID = @@Identity;";
+                            s += @"SET NOCOUNT OFF;";
+                            cmd.CommandText = s;
+                            _last_sql = s;
+                            var o = cmd.ExecuteScalar();
+                            ret = int.Parse(o.ToString());
+                        }
+                        else if(_type == EDbType.MYSQL)
+                        {
+                            cmd.CommandText = sql;
+                            _last_sql = sql;
+                            ret = cmd.ExecuteNonQuery();
                             ret = (int)(cmd as MySqlCommand).LastInsertedId;
+                        }
+                        else
+                        {
+                            string s1 = sql;
+                            cmd.CommandText = s1;
+                            cmd.ExecuteNonQuery();
+                            string s2 = "select last_insert_rowid() from " + _table_and_field_name_bracket[0] + __table_name + _table_and_field_name_bracket[1];
+                            _last_sql = s1 + ";" + s2 + ";";
+                            cmd.CommandText = s2;
+                            var o = cmd.ExecuteScalar();
+                            ret = int.Parse(o.ToString());
+                        }
                     }
                 }
                 catch (System.Exception ex)
