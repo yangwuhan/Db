@@ -349,14 +349,30 @@ namespace Tz
                                         }
                                     }
                                     if (!b_fix)
+                                    {
+                                        sr.Close();
+                                        sr.Dispose();
+                                        sr = null;
+                                        cmd.Dispose();
                                         throw new Exception("相同字段名超过100个");
+                                    }
                                 }
                                 ret.Add(field_name, sr.GetValue(i));
                             }
+                            sr.Close();
+                            sr.Dispose();
+                            sr = null;
+                            cmd.Dispose();
                             return ret;
                         }
                         else
+                        {
+                            sr.Close();
+                            sr.Dispose();
+                            sr = null;
+                            cmd.Dispose();
                             return null;
+                        }
                     }
                 }
                 catch (System.Exception ex)
@@ -521,12 +537,22 @@ namespace Tz
                                         }
                                     }
                                     if (!b_fix)
+                                    {
+                                        sr.Close();
+                                        sr.Dispose();
+                                        sr = null;
+                                        cmd.Dispose();
                                         throw new Exception("相同字段名超过100个");
+                                    }
                                 }
                                 dic.Add(field_name, sr.GetValue(i));
                             }
                             ret.Add(dic);
                         }
+                        sr.Close();
+                        sr.Dispose();
+                        sr = null;
+                        cmd.Dispose();
                         return ret;
                     }
                 }
@@ -598,7 +624,9 @@ namespace Tz
                         cmd.Connection = con;
                         cmd.CommandText = sql;
                         _last_sql = sql;
-                        return cmd.ExecuteNonQuery();
+                        int ret = cmd.ExecuteNonQuery();
+                        cmd.Dispose();
+                        return ret;
                     }
                 }
                 catch (System.Exception ex)
@@ -712,6 +740,8 @@ namespace Tz
                             var o = cmd.ExecuteScalar();
                             ret = int.Parse(o.ToString());
                         }
+
+                        cmd.Dispose();
                     }
                 }
                 catch (System.Exception ex)
@@ -807,6 +837,7 @@ namespace Tz
                         cmd.CommandText = sql;
                         _last_sql = sql;
                         ret = cmd.ExecuteNonQuery();
+                        cmd.Dispose();
                     }
                 }
                 catch (System.Exception ex)
@@ -887,6 +918,7 @@ namespace Tz
                         _last_sql = sql;
                         cmd.CommandText = sql;
                         ret = cmd.ExecuteNonQuery();
+                        cmd.Dispose();
                     }
                 }
                 catch (System.Exception ex)
@@ -967,6 +999,7 @@ namespace Tz
                         _last_sql = sql;
                         cmd.CommandText = sql;
                         ret = cmd.ExecuteNonQuery();
+                        cmd.Dispose();
                     }
                 }
                 catch (System.Exception ex)
@@ -1048,6 +1081,7 @@ namespace Tz
                         cmd.CommandText = sql;
                         _last_sql = sql;
                         object a = cmd.ExecuteScalar();
+                        cmd.Dispose();
                         if (a is DBNull)
                             return 0;
                         else
@@ -1121,12 +1155,22 @@ namespace Tz
                                         }
                                     }
                                     if (!b_fix)
+                                    {
+                                        sr.Close();
+                                        sr.Dispose();
+                                        sr = null;
+                                        cmd.Dispose();
                                         throw new Exception("相同字段名超过100个");
+                                    }
                                 }
                                 dic.Add(field_name, sr.GetValue(i));
                             }
                             ret.Add(dic);
                         }
+                        sr.Close();
+                        sr.Dispose();
+                        sr = null;
+                        cmd.Dispose();
                         return ret;
                     }
                 }
@@ -1170,6 +1214,7 @@ namespace Tz
             {
                 con.ConnectionString = connection_string;
                 con.Open();
+                
                 TTransaction transaction = con.BeginTransaction() as TTransaction;
                 try
                 {
@@ -1179,6 +1224,7 @@ namespace Tz
                         cmd.Transaction = transaction;
                         cmd.CommandType = System.Data.CommandType.Text;
                         action(cmd);
+                        cmd.Dispose();
                     }
                     transaction.Commit();//提交事务
                 }
