@@ -54,7 +54,7 @@ namespace Tz
         //MySQL
         protected static string _connection_string = "Server=127.0.0.1;Database=test; User ID=root;Password=123456;port=3306;CharSet=utf8;pooling=true;";
         //SQLite
-        //protected static string _connection_string = "Data Source = db.sqlite3";
+        //protected static string _connection_string = "Data Source = db.sqlite3;Journal Mode=WAL";
         //SQL Server
         //protected static string _connection_string = "Data Source = 127.0.0.1 ; Initial Catalog = test ; User ID = sa ; Pwd = 123456 ; ";
 
