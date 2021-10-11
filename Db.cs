@@ -39,11 +39,6 @@ namespace Tz
         }
         protected static EDbType _type = EDbType.MYSQL;
 
-        /**  数据表是否含有自增ID字段
-         */ 
-        public static bool IsTableContainIDField { get { return _is_table_contain_id_field; } set { _is_table_contain_id_field = value; } }
-        protected static bool _is_table_contain_id_field = true;
-       
         /** 连接字符串
          */ 
         public static string connection_string
@@ -646,7 +641,7 @@ namespace Tz
         }
 
         /** 添加记录
-         *  返回：受影响的行数，MYSQL返回的是插入的ID?【要求数据表必须有自增的id字段】 
+         *  返回：成功返回0
          */
         public int Add(Dictionary<string, string> data)
         {
@@ -701,7 +696,63 @@ namespace Tz
                     return 0;
             }
         }
-        protected int _Add<TConnection, TCommand>(string sql)
+        /** 添加记录
+         *  返回：返回的是插入的ID【要求数据表必须有自增的id字段】 
+         */
+        public int InsertGetId(Dictionary<string, string> data)
+        {
+            #region 构造SQL语句
+
+            if (string.IsNullOrEmpty(__table_name))
+                throw new Exception("空表名！");
+            if (data.Count == 0)
+                throw new Exception("无字段！");
+            StringBuilder sb = new StringBuilder();
+            sb.Append("INSERT INTO ")
+                .Append(_table_and_field_name_bracket[0]).Append(__table_name).Append(_table_and_field_name_bracket[1])
+                .Append("(");
+            List<string> keys = new List<string>(data.Keys);
+            for (int i = 0; i < keys.Count; ++i)
+            {
+                if (i != 0)
+                    sb.Append(",");
+                string key = keys[i];
+                sb.Append(_table_and_field_name_bracket[0]).Append(key).Append(_table_and_field_name_bracket[1]);
+            }
+            sb.Append(") VALUES(");
+            for (int i = 0; i < keys.Count; ++i)
+            {
+                if (i != 0)
+                    sb.Append(",");
+                string val = data[keys[i]];
+                if (val == null)
+                {
+                    sb.Append("null");
+                }
+                else
+                {
+                    val = _ValidValue(val);
+                    sb.Append("'").Append(val).Append("'");
+                }
+            }
+            sb.Append(")");
+
+            #endregion
+
+            switch (_type)
+            {
+                case EDbType.MYSQL:
+                    return _Add<MySqlConnection, MySqlCommand>(sb.ToString(), true);
+                case EDbType.SQLITE:
+                    return _Add<SQLiteConnection, SQLiteCommand>(sb.ToString(), true);
+                case EDbType.SQLSERVER2005:
+                case EDbType.SQLSERVER2012:
+                    return _Add<SqlConnection, SqlCommand>(sb.ToString(), true);
+                default:
+                    return 0;
+            }
+        }
+        protected int _Add<TConnection, TCommand>(string sql, bool ret_id = false)
             where TConnection : DbConnection, IDisposable, new()
             where TCommand : DbCommand, IDisposable, new()
         {
@@ -719,7 +770,7 @@ namespace Tz
                         if(_type == EDbType.SQLSERVER2005 || _type == EDbType.SQLSERVER2012)
                         {
                             string s = sql;
-                            if (_is_table_contain_id_field)
+                            if (ret_id)
                             {
                                 s = @"SET NOCOUNT ON ;";
                                 s += sql + " ;";
@@ -728,7 +779,7 @@ namespace Tz
                             }                            
                             cmd.CommandText = s;
                             _last_sql = s;
-                            if (_is_table_contain_id_field)
+                            if (ret_id)
                             {
                                 var o = cmd.ExecuteScalar();
                                 ret = int.Parse(o.ToString());
@@ -744,7 +795,7 @@ namespace Tz
                             cmd.CommandText = sql;
                             _last_sql = sql;
                             cmd.ExecuteNonQuery();
-                            if (_is_table_contain_id_field)
+                            if (ret_id)
                             {                               
                                 ret = (int)(cmd as MySqlCommand).LastInsertedId;
                             }
@@ -758,7 +809,7 @@ namespace Tz
                             string s1 = sql;
                             cmd.CommandText = s1;
                             cmd.ExecuteNonQuery();
-                            if (_is_table_contain_id_field)
+                            if (ret_id)
                             {                                
                                 string s2 = "select last_insert_rowid() from " + _table_and_field_name_bracket[0] + __table_name + _table_and_field_name_bracket[1];
                                 _last_sql = s1 + ";" + s2 + ";";
